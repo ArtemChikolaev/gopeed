@@ -1,0 +1,42 @@
+name: Validate Gopeed tray on macOS
+on:
+  push:
+    branches: [validation/macos-tray-1681]
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: a4984bd1d9ed69deaf7888776fa9ec921f4acd9b
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.11'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.6'
+          channel: stable
+      - name: Build native library
+        run: |
+          mkdir -p ui/flutter/macos/Frameworks
+          go build -tags nosqlite -ldflags="-w -s" -buildmode=c-shared -o ui/flutter/macos/Frameworks/libgopeed.dylib github.com/GopeedLab/gopeed/bind/desktop
+      - name: Build and package application
+        working-directory: ui/flutter
+        run: |
+          flutter pub get
+          flutter gen-l10n
+          flutter build macos
+          app=$(find build/macos/Build/Products/Release -maxdepth 1 -name '*.app' -print -quit)
+          test -d "$app"
+          ditto -c -k --keepParent "$app" "$RUNNER_TEMP/gopeed-macos.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gopeed-macos-a4984bd
+          path: ${{ runner.temp }}/gopeed-macos.zip
+          retention-days: 3
+      - working-directory: ui/flutter
+        run: flutter test test/app/application/app_platform_controller_test.dart
